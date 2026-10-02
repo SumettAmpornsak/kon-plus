@@ -15,13 +15,13 @@ const getFirebaseConfig = () => {
   }
 
   return {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyD-DEMO-KON-PLUS-KEY-0000000000",
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "kon-plus-prod.firebaseapp.com",
-    databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://kon-plus-prod-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "kon-plus-prod",
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "kon-plus-prod.appspot.com",
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "100000000000",
-    appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:100000000000:web:abcdef123456"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyA__GZHkv-iCeqM37EWzUgSpX8AIOTli5k",
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "konplus.firebaseapp.com",
+    databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://konplus-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "konplus",
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "konplus.firebasestorage.app",
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "699334258722",
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:699334258722:web:c9c82cf3fa4cd7b165da7b"
   };
 };
 

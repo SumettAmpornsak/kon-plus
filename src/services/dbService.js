@@ -28,48 +28,12 @@ export async function initializeSystemDefaults(ownerUser = null) {
       return;
     }
 
-    // Write system node
-    const systemData = {
-      initialized: true,
-      ownerUid: ownerUser?.uid || null,
-      version: '1.0.0',
-      settings: {
-        defaultOtRate: 50.0,
-        maxMachines: 20,
-        autoBackupDays: 7,
-        notificationCategories: {
-          newDaySummary: true,
-          unassignedAlert: true,
-          jobMachineChange: true,
-          otChange: true,
-          machineEvent: true,
-          supervisorEvent: true,
-          importantEdits: true,
-          endOfDaySummary: true
-        }
-      },
-      telegram: {
-        botToken: '',
-        chatId: '',
-        enabled: false,
-        verificationCode: Math.floor(100000 + Math.random() * 900000).toString()
-      }
-    };
-    await set(ref(rtdb, 'system'), systemData);
-
-    // Write default machines
-    const defaultMachines = {};
-    INITIAL_MACHINES.forEach(num => {
-      defaultMachines[num] = {
-        id: num,
-        number: num,
-        name: `เครื่อง ${num}`,
-        createdAt: Date.now()
-      };
-    });
-    await set(ref(rtdb, 'machines'), defaultMachines);
-
-    // Write owner user record (separate write so Security Rules can verify per-path)
+    // ---------------------------------------------------------
+    // FIRST: Create owner user record
+    // ---------------------------------------------------------
+    // This must happen before claiming /system/ownerUid because
+    // the Security Rules allow the first user to create their
+    // own user record only while ownerUid does not exist.
     if (ownerUser) {
       const ownerRecord = {
         uid: ownerUser.uid,
@@ -83,9 +47,82 @@ export async function initializeSystemDefaults(ownerUser = null) {
         createdAt: Date.now(),
         lastLoginAt: Date.now()
       };
-      await set(ref(rtdb, `users/${ownerUser.uid}`), ownerRecord);
+
+      await set(
+        ref(rtdb, `users/${ownerUser.uid}`),
+        ownerRecord
+      );
+
       console.log('Owner created:', ownerUser.email);
     }
+
+    // ---------------------------------------------------------
+    // SECOND: Claim system owner UID
+    // ---------------------------------------------------------
+    if (ownerUser) {
+      await set(
+        ref(rtdb, 'system/ownerUid'),
+        ownerUser.uid
+      );
+    }
+
+    // ---------------------------------------------------------
+    // THIRD: Write system settings separately
+    // ---------------------------------------------------------
+    // Do NOT write the whole /system node here.
+    // Security Rules only allow writing the individual
+    // /system/settings and /system/telegram paths.
+    await set(
+      ref(rtdb, 'system/settings'),
+      {
+        defaultOtRate: 50.0,
+        maxMachines: 20,
+        autoBackupDays: 7,
+        notificationCategories: {
+          newDaySummary: true,
+          unassignedAlert: true,
+          jobMachineChange: true,
+          otChange: true,
+          machineEvent: true,
+          supervisorEvent: true,
+          importantEdits: true,
+          endOfDaySummary: true
+        }
+      }
+    );
+
+    // ---------------------------------------------------------
+    // FOURTH: Write Telegram settings separately
+    // ---------------------------------------------------------
+    await set(
+      ref(rtdb, 'system/telegram'),
+      {
+        botToken: '',
+        chatId: '',
+        enabled: false,
+        verificationCode:
+          Math.floor(100000 + Math.random() * 900000).toString()
+      }
+    );
+
+    // ---------------------------------------------------------
+    // FIFTH: Write default machines
+    // ---------------------------------------------------------
+    const defaultMachines = {};
+
+    INITIAL_MACHINES.forEach(num => {
+      defaultMachines[num] = {
+        id: num,
+        number: num,
+        name: `เครื่อง ${num}`,
+        createdAt: Date.now()
+      };
+    });
+
+    await set(
+      ref(rtdb, 'machines'),
+      defaultMachines
+    );
 
     console.log('System initialized successfully.');
   } catch (error) {
@@ -97,8 +134,13 @@ export async function initializeSystemDefaults(ownerUser = null) {
 /**
  * Fetch or initialize daily assignment data for a specific date (YYYY-MM-DD)
  */
-export async function ensureDailyStructure(dateString, activeEmployees = [], masterMachines = []) {
+export async function ensureDailyStructure(
+  dateString,
+  activeEmployees = [],
+  masterMachines = []
+) {
   if (!dateString) dateString = getBangkokTodayString();
+
   try {
     const dailyRef = ref(rtdb, `daily/${dateString}`);
     const snapshot = await get(dailyRef);
@@ -106,8 +148,10 @@ export async function ensureDailyStructure(dateString, activeEmployees = [], mas
     if (!snapshot.exists()) {
       // New Day initialization:
       // 1. All active employees start as 'ยังไม่ได้ระบุ'
-      // 2. All machines start as 'vacant' (🟢 ว่าง) - does NOT carry over closed or assigned state!
+      // 2. All machines start as 'vacant' (🟢 ว่าง)
+      //    - does NOT carry over closed or assigned state!
       const initialAssignments = {};
+
       activeEmployees.forEach(emp => {
         initialAssignments[emp.id] = {
           empId: emp.id,
@@ -122,6 +166,7 @@ export async function ensureDailyStructure(dateString, activeEmployees = [], mas
       });
 
       const initialMachineStates = {};
+
       masterMachines.forEach(m => {
         initialMachineStates[m.number] = {
           status: MACHINE_STATUS.VACANT,
@@ -143,6 +188,7 @@ export async function ensureDailyStructure(dateString, activeEmployees = [], mas
       };
 
       await set(dailyRef, newDayData);
+
       return newDayData;
     }
 
@@ -156,24 +202,43 @@ export async function ensureDailyStructure(dateString, activeEmployees = [], mas
 /**
  * Record a login event into /loginHistory (Append-Only)
  */
-export async function recordLoginHistory({ user, success, ip = '127.0.0.1', location = 'Bangkok, Thailand' }) {
+export async function recordLoginHistory({
+  user,
+  success,
+  ip = '127.0.0.1',
+  location = 'Bangkok, Thailand'
+}) {
   const timestamp = Date.now();
+
   const loginEntry = {
     id: `login_${timestamp}_${Math.random().toString(36).substring(2, 6)}`,
     timestamp,
-    dateString: new Date(timestamp).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }),
+    dateString: new Date(timestamp).toLocaleString(
+      'th-TH',
+      { timeZone: 'Asia/Bangkok' }
+    ),
     email: user?.email || 'unknown',
     uid: user?.uid || null,
-    displayName: user?.displayName || user?.email || 'ผู้ใช้งาน',
+    displayName:
+      user?.displayName ||
+      user?.email ||
+      'ผู้ใช้งาน',
     success: !!success,
     ip,
     location
   };
 
   try {
-    const loginRef = ref(rtdb, `loginHistory/${loginEntry.id}`);
+    const loginRef = ref(
+      rtdb,
+      `loginHistory/${loginEntry.id}`
+    );
+
     await set(loginRef, loginEntry);
   } catch (error) {
-    console.error('Failed to log login history:', error);
+    console.error(
+      'Failed to log login history:',
+      error
+    );
   }
 }
