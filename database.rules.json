@@ -1,6 +1,5 @@
 {
   "rules": {
-
     "system": {
       ".read": "auth != null",
       "settings": {
@@ -17,12 +16,25 @@
     "users": {
       ".read": "auth != null",
       "$uid": {
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || (auth.uid === $uid && !newData.child('role').exists() && !newData.child('status').exists()) || (!root.child('system/ownerUid').exists()))"
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || (!root.child('system/ownerUid').exists()))",
+
+        "displayName": {
+          ".write": "auth != null && auth.uid === $uid"
+        },
+
+        "photoURL": {
+          ".write": "auth != null && auth.uid === $uid"
+        },
+
+        "lastLoginAt": {
+          ".write": "auth != null && auth.uid === $uid"
+        }
       }
     },
 
     "employees": {
       ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')",
+
       "$empId": {
         ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')"
       }
@@ -30,11 +42,13 @@
 
     "machines": {
       ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')",
+
       ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')"
     },
 
     "daily": {
       ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')",
+
       "$date": {
         ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')"
       }
@@ -42,6 +56,7 @@
 
     "auditLogs": {
       ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')",
+
       "$logId": {
         ".write": "auth != null && !data.exists() && newData.exists()"
       }
@@ -49,6 +64,7 @@
 
     "loginHistory": {
       ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'owner'",
+
       "$loginId": {
         ".write": "auth != null && !data.exists() && newData.exists()"
       }
@@ -56,6 +72,7 @@
 
     "backups": {
       ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')",
+
       ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || root.child('users').child(auth.uid).child('role').val() === 'supervisor')"
     },
 
