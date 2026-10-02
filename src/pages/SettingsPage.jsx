@@ -1,30 +1,30 @@
 // Settings Page (System, Usage, Account, Data Management, Security, Telegram)
-import React, { useState } from 'react';
-import { 
-  Settings, 
-  Send, 
-  Database, 
-  Shield, 
-  Sliders, 
-  User, 
-  Lock, 
-  Download, 
-  Upload, 
-  RotateCcw, 
-  Save, 
-  Check, 
-  AlertTriangle, 
-  QrCode, 
-  Terminal, 
-  CheckCircle2 
+import React, { useState, useEffect } from 'react';
+import {
+  Settings,
+  Send,
+  Database,
+  Shield,
+  Sliders,
+  User,
+  Lock,
+  Download,
+  Upload,
+  RotateCcw,
+  Save,
+  Check,
+  AlertTriangle,
+  QrCode,
+  Terminal,
+  CheckCircle2
 } from 'lucide-react';
 import { useDatabase } from '../contexts/DatabaseContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { 
-  sendTelegramMessage, 
-  sendTelegramNotification, 
-  executeTelegramCommand 
+import {
+  sendTelegramMessage,
+  sendTelegramNotification,
+  executeTelegramCommand
 } from '../services/telegramService';
 import { recordAuditLog } from '../services/auditService';
 import { AUDIT_CATEGORIES } from '../utils/constants';
@@ -37,14 +37,14 @@ export default function SettingsPage() {
   const { userProfile, isOwner, isSupervisor } = useAuth();
   const { theme, toggleTheme, language, setLanguage } = useTheme();
 
-  const [activeTab, setActiveTab] = useState('DATA'); 
+  const [activeTab, setActiveTab] = useState('DATA');
   // 'SYSTEM' | 'USAGE' | 'ACCOUNT' | 'DATA' | 'SECURITY' | 'TELEGRAM'
 
   // Telegram Config Form
-  const [botToken, setBotToken] = useState('');
   const [chatId, setChatId] = useState('');
   const [telegramEnabled, setTelegramEnabled] = useState(false);
   const [telegramTestResult, setTelegramTestResult] = useState('');
+  const [telegramSaveStatus, setTelegramSaveStatus] = useState('');
   const [commandInput, setCommandInput] = useState('/วันนี้');
   const [commandOutput, setCommandOutput] = useState('');
 
@@ -85,20 +85,226 @@ export default function SettingsPage() {
     }
   ]);
 
-  // Test Telegram Bot
-  const handleTestTelegram = async () => {
-    setTelegramTestResult('กำลังส่งข้อความทดสอบ...');
-    const ok = await sendTelegramMessage(
-      botToken, 
-      chatId, 
-      `<b>[คนพลัส Kon Plus]</b> 📢\nการเชื่อมต่อ Telegram Bot สำเร็จเรียบร้อยแล้ว!`
-    );
-    if (ok) {
-      setTelegramTestResult('✅ ส่งข้อความทดสอบสำเร็จ! ตรวจสอบที่ Telegram');
-    } else {
-      setTelegramTestResult('❌ ส่งไม่สำเร็จ กรุณาตรวจสอบ Bot Token และ Chat ID');
+  // =========================================================
+  // Telegram Settings - Load from Firebase
+  // =========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTelegramSettings = async () => {
+      if (!userProfile?.uid) {
+        return;
+      }
+
+      try {
+        const [
+          telegramSnapshot,
+          systemSnapshot
+        ] = await Promise.all([
+          get(
+            ref(
+              rtdb,
+              'system/telegram'
+            )
+          ),
+
+          get(
+            ref(
+              rtdb,
+              'system/settings'
+            )
+          )
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        const telegram =
+          telegramSnapshot.exists()
+            ? telegramSnapshot.val()
+            : {};
+
+        const system =
+          systemSnapshot.exists()
+            ? systemSnapshot.val()
+            : {};
+
+        setChatId(
+          telegram.chatId || ''
+        );
+
+        setTelegramEnabled(
+          telegram.enabled === true
+        );
+
+        setCategories(prev => ({
+          ...prev,
+          ...(system.notificationCategories || {})
+        }));
+
+      } catch (error) {
+        console.error(
+          'Failed to load Telegram settings:',
+          error
+        );
+      }
+    };
+
+    loadTelegramSettings();
+
+    return () => {
+      cancelled = true;
+    };
+
+  }, [userProfile?.uid]);
+
+
+  // =========================================================
+  // Save Telegram Basic Settings
+  // =========================================================
+
+  const saveTelegramConfig = async (
+    overrides = {}
+  ) => {
+    if (!isOwner) {
+      return false;
+    }
+
+    try {
+      const nextChatId =
+        overrides.chatId !== undefined
+          ? overrides.chatId
+          : chatId;
+
+      const nextEnabled =
+        overrides.enabled !== undefined
+          ? overrides.enabled
+          : telegramEnabled;
+
+      await update(
+        ref(
+          rtdb,
+          'system/telegram'
+        ),
+        {
+          chatId:
+            String(nextChatId).trim(),
+
+          enabled:
+            Boolean(nextEnabled)
+        }
+      );
+
+      setTelegramSaveStatus(
+        'บันทึกแล้ว'
+      );
+
+      window.setTimeout(
+        () => setTelegramSaveStatus(''),
+        1500
+      );
+
+      return true;
+
+    } catch (error) {
+
+      console.error(
+        'Failed to save Telegram settings:',
+        error
+      );
+
+      setTelegramSaveStatus(
+        'บันทึกไม่สำเร็จ'
+      );
+
+      return false;
     }
   };
+
+
+  // =========================================================
+  // Save Notification Categories
+  // =========================================================
+
+  const saveNotificationCategories =
+    async (nextCategories) => {
+
+      if (!isOwner) {
+        return false;
+      }
+
+      try {
+
+        await update(
+          ref(
+            rtdb,
+            'system/settings'
+          ),
+          {
+            notificationCategories:
+              nextCategories
+          }
+        );
+
+        setTelegramSaveStatus(
+          'บันทึกแล้ว'
+        );
+
+        window.setTimeout(
+          () => setTelegramSaveStatus(''),
+          1500
+        );
+
+        return true;
+
+      } catch (error) {
+
+        console.error(
+          'Failed to save Telegram categories:',
+          error
+        );
+
+        setTelegramSaveStatus(
+          'บันทึกไม่สำเร็จ'
+        );
+
+        return false;
+      }
+    };
+
+
+  // =========================================================
+  // Test Telegram
+  // =========================================================
+
+  const handleTestTelegram =
+    async () => {
+
+      setTelegramTestResult(
+        'กำลังส่งข้อความทดสอบ...'
+      );
+
+      const ok =
+        await sendTelegramMessage(
+          chatId,
+          `<b>[คนพลัส Kon Plus]</b> 📢\nการเชื่อมต่อ Telegram Bot สำเร็จเรียบร้อยแล้ว!`
+        );
+
+      if (ok) {
+
+        setTelegramTestResult(
+          '✅ ส่งข้อความทดสอบสำเร็จ! ตรวจสอบที่ Telegram'
+        );
+
+      } else {
+
+        setTelegramTestResult(
+          '❌ ส่งไม่สำเร็จ กรุณาตรวจสอบ Chat ID และ Worker'
+        );
+      }
+    };
 
   // Run Telegram Command simulation
   const handleExecuteCommand = () => {
@@ -156,7 +362,13 @@ export default function SettingsPage() {
     });
 
     await sendTelegramNotification(
-      { telegram: { botToken, chatId, enabled: telegramEnabled } },
+      {
+        telegram: {
+          chatId,
+          enabled: telegramEnabled
+        },
+        notificationCategories: categories
+      },
       'importantEdits',
       `สำรองข้อมูลสำเร็จโดย ${newBackup.initiator}`
     );
@@ -197,7 +409,13 @@ export default function SettingsPage() {
       });
 
       await sendTelegramNotification(
-        { telegram: { botToken, chatId, enabled: telegramEnabled } },
+        {
+          telegram: {
+            chatId,
+            enabled: telegramEnabled
+          },
+          notificationCategories: categories
+        },
         'importantEdits',
         `การกู้คืนข้อมูลระบบเสร็จสมบูรณ์เรียบร้อยแล้ว`
       );
@@ -212,7 +430,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 pb-16 animate-fade-in max-w-5xl mx-auto">
-      
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2.5">
@@ -238,11 +456,10 @@ export default function SettingsPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${
-                activeTab === tab.id
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-bold'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition ${activeTab === tab.id
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-bold'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
             >
               <Icon className="w-4 h-4" />
               <span>{tab.label}</span>
@@ -254,7 +471,7 @@ export default function SettingsPage() {
       {/* TAB 1: DATA MANAGEMENT (Backup & Restore, Import / Export) */}
       {activeTab === 'DATA' && (
         <div className="space-y-6">
-          
+
           {/* Backup Action Bar */}
           <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -287,11 +504,10 @@ export default function SettingsPage() {
                 <div key={bk.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs sm:text-sm">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        bk.type === 'auto'
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${bk.type === 'auto'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                        }`}>
                         {bk.type === 'auto' ? 'อัตโนมัติ' : 'กำหนดเอง'}
                       </span>
                       <span className="font-semibold text-slate-800 dark:text-slate-100">
@@ -352,7 +568,7 @@ export default function SettingsPage() {
                   การเชื่อมต่อ Telegram Bot
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {isOwner ? 'ตั้งค่า Bot Token และ Chat ID เพื่อรับการแจ้งเตือนและสั่งการผ่านแชท' : '👁️ โหมดดูข้อมูลอย่างเดียว (Supervisor View Only)'}
+                  {isOwner ? 'ตั้งค่า Chat ID และการแจ้งเตือน Telegram' : '👁️ โหมดดูข้อมูลอย่างเดียว (Supervisor View Only)'}
                 </p>
               </div>
 
@@ -364,7 +580,11 @@ export default function SettingsPage() {
                   <input
                     type="checkbox"
                     checked={telegramEnabled}
-                    onChange={(e) => setTelegramEnabled(e.target.checked)}
+                    onChange={async (e) => {
+                      const enabled = e.target.checked;
+                      setTelegramEnabled(enabled);
+                      await saveTelegramConfig({ enabled });
+                    }}
                     className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500"
                   />
                 </div>
@@ -376,14 +596,12 @@ export default function SettingsPage() {
                 <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
                   Telegram Bot Token
                 </label>
-                <input
-                  type="text"
-                  disabled={!isOwner}
-                  placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-                  value={botToken}
-                  onChange={(e) => setBotToken(e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono disabled:opacity-60"
-                />
+                <div className="w-full px-4 py-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 rounded-xl text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  🔐 จัดเก็บอย่างปลอดภัยใน Cloudflare Worker
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Bot Token จะไม่ถูกเก็บใน Browser หรือ Firebase
+                </p>
               </div>
 
               <div>
@@ -396,6 +614,7 @@ export default function SettingsPage() {
                   placeholder="-100123456789 หรือ User Chat ID"
                   value={chatId}
                   onChange={(e) => setChatId(e.target.value)}
+                  onBlur={() => saveTelegramConfig()}
                   className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono disabled:opacity-60"
                 />
               </div>
@@ -411,6 +630,11 @@ export default function SettingsPage() {
                 </button>
                 {telegramTestResult && (
                   <span className="text-xs font-medium">{telegramTestResult}</span>
+                )}
+                {telegramSaveStatus && (
+                  <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    {telegramSaveStatus}
+                  </span>
                 )}
               </div>
             )}
@@ -441,7 +665,14 @@ export default function SettingsPage() {
                     type="checkbox"
                     disabled={!isOwner}
                     checked={categories[item.key] ?? true}
-                    onChange={(e) => setCategories(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                    onChange={async (e) => {
+                      const nextCategories = {
+                        ...categories,
+                        [item.key]: e.target.checked
+                      };
+                      setCategories(nextCategories);
+                      await saveNotificationCategories(nextCategories);
+                    }}
                     className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                   />
                 </div>
@@ -475,7 +706,7 @@ export default function SettingsPage() {
             </div>
 
             {commandOutput && (
-              <div 
+              <div
                 className="p-4 rounded-2xl bg-slate-950 border border-slate-800 whitespace-pre-wrap leading-relaxed text-emerald-300"
                 dangerouslySetInnerHTML={{ __html: commandOutput }}
               />
@@ -575,17 +806,15 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => toggleTheme()}
-                  className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${
-                    theme === 'light' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                  }`}
+                  className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${theme === 'light' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                    }`}
                 >
                   Light Theme
                 </button>
                 <button
                   onClick={() => toggleTheme()}
-                  className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${
-                    theme === 'dark' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                  }`}
+                  className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${theme === 'dark' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                    }`}
                 >
                   Dark Theme
                 </button>
@@ -599,17 +828,15 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setLanguage('th')}
-                  className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${
-                    language === 'th' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                  }`}
+                  className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${language === 'th' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                    }`}
                 >
                   ภาษาไทย (Thai)
                 </button>
                 <button
                   onClick={() => setLanguage('en')}
-                  className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${
-                    language === 'en' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                  }`}
+                  className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                    }`}
                 >
                   English
                 </button>
@@ -623,7 +850,7 @@ export default function SettingsPage() {
       {restoreStep > 0 && selectedBackup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-md w-full border border-amber-300 dark:border-amber-800 p-6 space-y-4">
-            
+
             <div className="flex items-center gap-3">
               <div className="p-3 bg-amber-100 dark:bg-amber-950 text-amber-600 rounded-2xl">
                 <RotateCcw className="w-6 h-6" />
@@ -644,8 +871,8 @@ export default function SettingsPage() {
                 ระบบจะสำรองข้อมูลปัจจุบันไว้ให้อัตโนมัติก่อนเริ่มกู้คืน
               </p>
               <p>
-                {restoreStep === 1 
-                  ? 'ข้อมูลการทำงานปัจจุบันจะถูกแทนที่ด้วยข้อมูลจากชุดสำรองนี้ คุณแน่ใจหรือไม่?' 
+                {restoreStep === 1
+                  ? 'ข้อมูลการทำงานปัจจุบันจะถูกแทนที่ด้วยข้อมูลจากชุดสำรองนี้ คุณแน่ใจหรือไม่?'
                   : 'กรุณายืนยันครั้งสุดท้าย ข้อมูลทั้งหมดจะถูกรีเฟรชกลับไปยังจุดเวลาที่เลือก'}
               </p>
             </div>
@@ -664,7 +891,7 @@ export default function SettingsPage() {
               >
                 ยกเลิก
               </button>
-              
+
               {restoreStep === 1 ? (
                 <button
                   type="button"
