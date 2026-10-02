@@ -1,17 +1,20 @@
 // Telegram Bot Integration Service for Kon Plus
-// Bot Token is kept server-side in Cloudflare Worker.
+// Bot Token อยู่ใน Cloudflare Worker เท่านั้น
 
 import { auth } from './firebase';
 
 export const TELEGRAM_WORKER_URL =
   'https://kon-plus-telegram.sumett13ampornsak.workers.dev';
 
-/**
- * Send a message through Cloudflare Worker.
- * Browser never receives the Telegram Bot Token.
- */
-export async function sendTelegramMessage(chatId, text) {
-  if (!chatId || !text || !auth.currentUser) {
+export async function sendTelegramMessage(
+  chatId,
+  text
+) {
+  if (
+    !chatId ||
+    !text ||
+    !auth.currentUser
+  ) {
     return false;
   }
 
@@ -19,32 +22,42 @@ export async function sendTelegramMessage(chatId, text) {
     const idToken =
       await auth.currentUser.getIdToken();
 
-    const res = await fetch(
-      `${TELEGRAM_WORKER_URL}/api/telegram/send`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`
-        },
-        body: JSON.stringify({
-          chatId: String(chatId),
-          text: String(text)
-        })
-      }
-    );
+    const response =
+      await fetch(
+        `${TELEGRAM_WORKER_URL}/api/telegram/send`,
+        {
+          method: 'POST',
 
-    if (!res.ok) {
+          headers: {
+            'Content-Type':
+              'application/json',
+
+            Authorization:
+              `Bearer ${idToken}`
+          },
+
+          body: JSON.stringify({
+            chatId:
+              String(chatId),
+
+            text:
+              String(text)
+          })
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (!response.ok) {
       console.error(
         'Telegram Worker request failed:',
-        res.status,
-        await res.text()
+        response.status,
+        data
       );
 
       return false;
     }
-
-    const data = await res.json();
 
     return data.ok === true;
 
@@ -58,20 +71,20 @@ export async function sendTelegramMessage(chatId, text) {
   }
 }
 
-/**
- * Send categorized notification.
- */
 export async function sendTelegramNotification(
   settings = {},
   categoryKey,
   message
 ) {
-  if (!settings.telegram?.enabled) {
+  if (
+    !settings.telegram?.enabled
+  ) {
     return false;
   }
 
   const categories =
-    settings.notificationCategories || {};
+    settings.notificationCategories ||
+    {};
 
   if (
     categoryKey &&
@@ -81,7 +94,7 @@ export async function sendTelegramNotification(
   }
 
   const chatId =
-    settings.telegram.chatId;
+    settings.telegram?.chatId;
 
   if (!chatId) {
     return false;
@@ -96,18 +109,17 @@ export async function sendTelegramNotification(
   );
 }
 
-/**
- * Local Telegram command simulator.
- */
 export function executeTelegramCommand(
   commandText,
   systemData
 ) {
   const parts =
-    commandText.trim().split(/\s+/);
+    String(commandText || '')
+      .trim()
+      .split(/\s+/);
 
   const cmd =
-    parts[0].toLowerCase();
+    parts[0]?.toLowerCase();
 
   switch (cmd) {
 
@@ -139,6 +151,7 @@ export function executeTelegramCommand(
 
       const lines =
         machines.map(m => {
+
           const icon =
             m.status === 'in_use'
               ? '🔴'
@@ -151,13 +164,16 @@ export function executeTelegramCommand(
               ? `(${m.assignedName})`
               : '';
 
-          return `\
-${icon} เครื่อง ${m.number} ${emp}`;
+          return `• ${icon} เครื่อง ${m.number} ${emp}`;
         });
 
       return (
         `🏭 <b>สถานะเครื่องจักร:</b>\n` +
-        lines.join('\n')
+        (
+          lines.length
+            ? lines.join('\n')
+            : 'ยังไม่มีข้อมูลเครื่องจักร'
+        )
       );
     }
 
@@ -165,14 +181,15 @@ ${icon} เครื่อง ${m.number} ${emp}`;
       const otList =
         systemData?.otList || [];
 
-      if (otList.length === 0) {
+      if (
+        otList.length === 0
+      ) {
         return '⏰ วันนี้ยังไม่มีใครทำ OT';
       }
 
       const lines =
-        otList.map(
-          item =>
-            `• ${item.name}: ${item.otHours} ชม. (${item.job || '-'})`
+        otList.map(item =>
+          `• ${item.name}: ${item.otHours} ชม. (${item.job || '-'})`
         );
 
       return (
@@ -185,20 +202,35 @@ ${icon} เครื่อง ${m.number} ${emp}`;
       const unassigned =
         systemData?.unassignedList || [];
 
-      if (unassigned.length === 0) {
+      if (
+        unassigned.length === 0
+      ) {
         return '✅ พนักงานที่มาทำงานได้รับการจัดงานครบทุกคนแล้ว!';
       }
 
       const lines =
-        unassigned.map(
-          e =>
-            `• ${e.employeeId} ${e.name} (${e.nickname || '-'})`
+        unassigned.map(e =>
+          `• ${e.employeeId || e.id || '-'} ${e.name || '-'} (${e.nickname || '-'})`
         );
 
       return (
         `⚠️ <b>พนักงานที่ยังไม่จัดงาน:</b>\n` +
         lines.join('\n')
       );
+    }
+
+    case '/รายงาน': {
+      const summary =
+        systemData?.todaySummary || {};
+
+      return `📊 <b>รายงานวันนี้:</b>
+
+มาทำงาน: ${summary.workingCount || 0} คน
+เข้าเครื่อง: ${summary.machineCount || 0} คน
+พับ/ซีน: ${summary.foldSealCount || 0} คน
+ยังไม่ได้จัดงาน: ${summary.unassignedCount || 0} คน
+OT: ${summary.otCount || 0} คน
+ชั่วโมง OT: ${summary.otHours || 0} ชม.`;
     }
 
     default:
