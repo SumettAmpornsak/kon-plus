@@ -2,12 +2,15 @@
   "rules": {
     "system": {
       ".read": "auth != null",
+
       "settings": {
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'owner'"
       },
+
       "telegram": {
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'owner'"
       },
+
       "ownerUid": {
         ".write": "auth != null && !data.exists()"
       }
@@ -15,8 +18,9 @@
 
     "users": {
       ".read": "auth != null",
+
       "$uid": {
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || (!root.child('system/ownerUid').exists()))",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'owner' || (!root.child('system/ownerUid').exists()) || (!data.exists() && auth.uid === $uid && auth.token.email != null && root.child('userInvites').child(auth.token.email.toLowerCase().replace('.', '%2E')).child('enabled').val() === true && newData.child('email').val() === auth.token.email.toLowerCase() && newData.child('role').val() === root.child('userInvites').child(auth.token.email.toLowerCase().replace('.', '%2E')).child('role').val() && newData.child('status').val() === root.child('userInvites').child(auth.token.email.toLowerCase().replace('.', '%2E')).child('status').val()))",
 
         "displayName": {
           ".write": "auth != null && auth.uid === $uid"
@@ -28,6 +32,18 @@
 
         "lastLoginAt": {
           ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    },
+
+    "userInvites": {
+      "$emailKey": {
+        ".read": "auth != null && auth.token.email != null && $emailKey === auth.token.email.toLowerCase().replace('.', '%2E')",
+
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'owner'",
+
+        "claimedUid": {
+          ".write": "auth != null && auth.token.email != null && $emailKey === auth.token.email.toLowerCase().replace('.', '%2E') && !data.exists() && newData.val() === auth.uid"
         }
       }
     },

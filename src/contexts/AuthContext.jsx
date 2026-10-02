@@ -1,5 +1,11 @@
 // Authentication Context for Kon Plus
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect
+} from 'react';
+
 import {
   signInWithPopup,
   signOut as firebaseSignOut,
@@ -46,11 +52,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
 
-    const sessionDate = localStorage.getItem(
-      'kon_plus_session_date'
-    );
+    const sessionDate =
+      localStorage.getItem(
+        'kon_plus_session_date'
+      );
 
-    const today = getBangkokTodayString();
+    const today =
+      getBangkokTodayString();
+
 
     if (
       sessionDate &&
@@ -75,32 +84,35 @@ export function AuthProvider({ children }) {
     }
 
 
-    const interval = setInterval(() => {
+    const interval =
+      setInterval(() => {
 
-      const currentToday =
-        getBangkokTodayString();
+        const currentToday =
+          getBangkokTodayString();
 
-      const currentSessionDate =
-        localStorage.getItem(
-          'kon_plus_session_date'
-        );
-
-      if (
-        currentSessionDate &&
-        currentSessionDate !== currentToday &&
-        currentUser
-      ) {
-
-        setIsNewDayLogout(true);
-
-        logout();
-
-      }
-
-    }, 60000);
+        const currentSessionDate =
+          localStorage.getItem(
+            'kon_plus_session_date'
+          );
 
 
-    return () => clearInterval(interval);
+        if (
+          currentSessionDate &&
+          currentSessionDate !== currentToday &&
+          currentUser
+        ) {
+
+          setIsNewDayLogout(true);
+
+          logout();
+
+        }
+
+      }, 60000);
+
+
+    return () =>
+      clearInterval(interval);
 
   }, [currentUser]);
 
@@ -128,6 +140,7 @@ export function AuthProvider({ children }) {
               localStorage.getItem(
                 'kon_plus_demo_session'
               );
+
 
             if (demoUser) {
 
@@ -157,6 +170,7 @@ export function AuthProvider({ children }) {
 
             }
 
+
             setLoading(false);
 
           }
@@ -165,7 +179,8 @@ export function AuthProvider({ children }) {
       );
 
 
-    return () => unsubscribe();
+    return () =>
+      unsubscribe();
 
   }, []);
 
@@ -174,101 +189,252 @@ export function AuthProvider({ children }) {
   // CLIENT INFORMATION
   // ============================================================
 
-  const fetchClientInfo = async () => {
+  const fetchClientInfo =
+    async () => {
 
-    try {
+      try {
 
-      const res =
-        await fetch(
-          'https://ipapi.co/json/'
-        );
+        const res =
+          await fetch(
+            'https://ipapi.co/json/'
+          );
 
-      if (res.ok) {
 
-        const data =
-          await res.json();
+        if (res.ok) {
 
-        return {
+          const data =
+            await res.json();
 
-          ip:
-            data.ip ||
-            '127.0.0.1',
 
-          location:
-            `${data.city || 'Bangkok'}, ${data.country_name || 'Thailand'}`
-        };
+          return {
+
+            ip:
+              data.ip ||
+              '127.0.0.1',
+
+            location:
+              `${data.city || 'Bangkok'}, ${data.country_name || 'Thailand'}`
+          };
+
+        }
+
+      } catch (e) {
+
+        // ไม่ให้ IP API ทำให้ Login ล้มเหลว
 
       }
 
-    } catch (e) {
 
-      // ไม่ให้ IP API ทำให้ Login ล้มเหลว
-    }
+      return {
 
+        ip:
+          '127.0.0.1',
 
-    return {
+        location:
+          'Bangkok, Thailand'
 
-      ip: '127.0.0.1',
-
-      location:
-        'Bangkok, Thailand'
+      };
 
     };
 
-  };
+
+  // ============================================================
+  // EMAIL KEY
+  // ============================================================
+
+  const makeEmailKey =
+    (email) => {
+
+      return String(
+        email || ''
+      )
+        .trim()
+        .toLowerCase()
+        .replace(/\./g, '%2E');
+
+    };
+
+
+  // ============================================================
+  // SYNC OWNER INVITES
+  // ============================================================
+  //
+  // ซ่อมข้อมูลเก่าที่ users ใช้ key แบบ:
+  //
+  // user_175xxxx
+  //
+  // ให้กลายเป็น invite ที่ผูกกับ Gmail
+  //
+  // Owner เป็นคนเดียวที่ทำส่วนนี้ได้
+  // ============================================================
+
+  const syncOwnerInvites =
+    async () => {
+
+      try {
+
+        const usersSnap =
+          await get(
+            ref(rtdb, 'users')
+          );
+
+
+        if (!usersSnap.exists()) {
+          return;
+        }
+
+
+        const users =
+          usersSnap.val();
+
+
+        for (
+          const user of
+          Object.values(users)
+        ) {
+
+          if (!user) {
+            continue;
+          }
+
+
+          if (
+            user.role ===
+            ROLES.OWNER
+          ) {
+
+            continue;
+          }
+
+
+          const email =
+            String(
+              user.email || ''
+            )
+              .trim()
+              .toLowerCase();
+
+
+          if (!email) {
+            continue;
+          }
+
+
+          const emailKey =
+            makeEmailKey(email);
+
+
+          await set(
+
+            ref(
+              rtdb,
+              `userInvites/${emailKey}`
+            ),
+
+            {
+
+              email,
+
+              role:
+                user.role ||
+                ROLES.SUPERVISOR,
+
+              status:
+                user.status ||
+                'active',
+
+              displayName:
+                user.displayName ||
+                'หัวหน้ากะ',
+
+              nickname:
+                user.nickname ||
+                '',
+
+              employeeId:
+                user.employeeId ||
+                '',
+
+              enabled:
+                user.status !==
+                'disabled'
+
+            }
+
+          );
+
+        }
+
+
+        console.log(
+          'Supervisor invites synchronized.'
+        );
+
+      } catch (error) {
+
+        console.warn(
+          'Failed to synchronize supervisor invites:',
+          error
+        );
+
+      }
+
+    };
 
 
   // ============================================================
   // REJECT LOGIN
   // ============================================================
 
-  const rejectLogin = async (
-    message,
-    user,
-    clientInfo
-  ) => {
+  const rejectLogin =
+    async (
+      message,
+      user,
+      clientInfo
+    ) => {
 
-    try {
+      try {
 
-      await recordLoginHistory({
+        await recordLoginHistory({
 
-        user,
+          user,
 
-        success: false,
+          success:
+            false,
 
-        ip: clientInfo.ip,
+          ip:
+            clientInfo.ip,
 
-        location: clientInfo.location
+          location:
+            clientInfo.location
 
-      });
+        });
 
-    } catch (e) {
-
-      // ไม่ให้การบันทึก Login History
-      // ทำให้ Logout ไม่สำเร็จ
-    }
-
-
-    try {
-
-      await firebaseSignOut(auth);
-
-    } catch (e) {}
+      } catch (e) {}
 
 
-    setCurrentUser(null);
+      try {
 
-    setUserProfile(null);
+        await firebaseSignOut(
+          auth
+        );
 
-    setAuthError(message);
+      } catch (e) {}
 
-    setLoading(false);
 
-  };
+      setCurrentUser(null);
+
+      setUserProfile(null);
+
+      setAuthError(message);
+
+      setLoading(false);
+
+    };
 
 
   // ============================================================
-  // VERIFY USER PROFILE
+  // VERIFY AND LOAD USER
   // ============================================================
 
   const verifyAndLoadUserProfile =
@@ -289,15 +455,14 @@ export function AuthProvider({ children }) {
         // SYSTEM
         // ------------------------------------------------------
 
-        const sysRef =
-          ref(rtdb, 'system');
-
         const sysSnap =
-          await get(sysRef);
+          await get(
+            ref(rtdb, 'system')
+          );
 
 
         // ------------------------------------------------------
-        // CURRENT USER
+        // CURRENT UID
         // ------------------------------------------------------
 
         const userRef =
@@ -306,104 +471,31 @@ export function AuthProvider({ children }) {
             `users/${firebaseUser.uid}`
           );
 
+
         let userSnap =
           await get(userRef);
 
 
         // ------------------------------------------------------
-        // USER MIGRATION
-        // ------------------------------------------------------
-        //
-        // ป้องกัน Supervisor ไปสร้าง /users/{uid}
-        // ของตัวเองหรือของคนอื่นโดยไม่ได้รับอนุญาต
-        //
-        // จะ migrate เฉพาะกรณีที่ข้อมูลเดิมมี uid
-        // ตรงกับ Firebase UID อยู่แล้ว
+        // NORMALIZED EMAIL
         // ------------------------------------------------------
 
-        if (!userSnap.exists()) {
-
-          const usersSnap =
-            await get(
-              ref(rtdb, 'users')
-            );
-
-
-          if (usersSnap.exists()) {
-
-            const users =
-              usersSnap.val();
+        const normalizedEmail =
+          String(
+            firebaseUser.email || ''
+          )
+            .trim()
+            .toLowerCase();
 
 
-            const match =
-              Object.entries(users)
-                .find(
-                  ([key, value]) =>
-
-                    key !== firebaseUser.uid &&
-
-                    value?.email
-                      ?.toLowerCase() ===
-                    firebaseUser.email
-                      ?.toLowerCase()
-                );
-
-
-            if (match) {
-
-              const [
-                ,
-                existingData
-              ] = match;
-
-
-              // ------------------------------------------------
-              // migrate เฉพาะ record ที่ระบุ UID ตรงกัน
-              // ------------------------------------------------
-
-              if (
-                existingData?.uid ===
-                firebaseUser.uid
-              ) {
-
-                await set(
-                  userRef,
-                  {
-
-                    ...existingData,
-
-                    uid:
-                      firebaseUser.uid,
-
-                    displayName:
-                      firebaseUser.displayName ||
-                      existingData.displayName,
-
-                    photoURL:
-                      firebaseUser.photoURL ||
-                      existingData.photoURL,
-
-                    lastLoginAt:
-                      Date.now()
-
-                  }
-                );
-
-
-                userSnap =
-                  await get(userRef);
-
-              }
-
-            }
-
-          }
-
-        }
+        const emailKey =
+          makeEmailKey(
+            normalizedEmail
+          );
 
 
         // ------------------------------------------------------
-        // FIRST USER = OWNER
+        // OWNER FIRST-LOGIN INITIALIZATION
         // ------------------------------------------------------
 
         if (
@@ -415,8 +507,187 @@ export function AuthProvider({ children }) {
             firebaseUser
           );
 
+
           userSnap =
             await get(userRef);
+
+        }
+
+
+        // ------------------------------------------------------
+        // INVITE
+        // ------------------------------------------------------
+
+        let inviteSnap =
+          null;
+
+
+        if (normalizedEmail) {
+
+          inviteSnap =
+            await get(
+              ref(
+                rtdb,
+                `userInvites/${emailKey}`
+              )
+            );
+
+        }
+
+
+        const invite =
+          inviteSnap?.exists()
+            ? inviteSnap.val()
+            : null;
+
+
+        // ------------------------------------------------------
+        // CLAIM EXISTING INVITED ACCOUNT
+        // ------------------------------------------------------
+        //
+        // กรณีเก่า:
+        //
+        // users/user_12345
+        //
+        // email = supervisor@gmail.com
+        //
+        // Google UID = abcXYZ...
+        //
+        // ระบบจะสร้าง:
+        //
+        // users/abcXYZ...
+        //
+        // โดยเอาสิทธิ์จาก invite
+        // ------------------------------------------------------
+
+        if (
+          !userSnap.exists() &&
+          invite?.enabled === true
+        ) {
+
+          const usersSnap =
+            await get(
+              ref(rtdb, 'users')
+            );
+
+
+          let legacyUser =
+            null;
+
+
+          if (
+            usersSnap.exists()
+          ) {
+
+            const users =
+              usersSnap.val();
+
+
+            const match =
+              Object.entries(users)
+                .find(
+                  ([key, value]) =>
+
+                    key !==
+                    firebaseUser.uid &&
+
+                    value?.email
+                      ?.toLowerCase() ===
+                    normalizedEmail
+                );
+
+
+            if (match) {
+
+              legacyUser =
+                match[1];
+
+            }
+
+          }
+
+
+          const source =
+            legacyUser ||
+            invite;
+
+
+          const claimedProfile = {
+
+            ...source,
+
+            uid:
+              firebaseUser.uid,
+
+            email:
+              normalizedEmail,
+
+            role:
+              invite.role ||
+              ROLES.SUPERVISOR,
+
+            status:
+              invite.status ||
+              'active',
+
+            displayName:
+              firebaseUser.displayName ||
+              source.displayName ||
+              'หัวหน้ากะ',
+
+            photoURL:
+              firebaseUser.photoURL ||
+              source.photoURL ||
+              null,
+
+            lastLoginAt:
+              Date.now()
+
+          };
+
+
+          // ----------------------------------------------------
+          // CREATE REAL UID USER
+          // ----------------------------------------------------
+
+          await set(
+            userRef,
+            claimedProfile
+          );
+
+
+          userSnap =
+            await get(userRef);
+
+
+          // ----------------------------------------------------
+          // MARK INVITE AS CLAIMED
+          // ----------------------------------------------------
+
+          try {
+
+            await update(
+
+              ref(
+                rtdb,
+                `userInvites/${emailKey}`
+              ),
+
+              {
+                claimedUid:
+                  firebaseUser.uid
+              }
+
+            );
+
+          } catch (claimError) {
+
+            console.warn(
+              'Invite claim marker failed:',
+              claimError
+            );
+
+          }
 
         }
 
@@ -442,12 +713,16 @@ export function AuthProvider({ children }) {
         }
 
 
+        // ------------------------------------------------------
+        // PROFILE
+        // ------------------------------------------------------
+
         const profile =
           userSnap.val();
 
 
         // ------------------------------------------------------
-        // DISABLED USER
+        // DISABLED
         // ------------------------------------------------------
 
         if (
@@ -471,17 +746,7 @@ export function AuthProvider({ children }) {
 
 
         // ------------------------------------------------------
-        // UPDATE ONLY SAFE PROFILE FIELDS
-        // ------------------------------------------------------
-        //
-        // database.rules.json อนุญาตให้เจ้าของ UID
-        // แก้เฉพาะ:
-        //
-        // displayName
-        // photoURL
-        // lastLoginAt
-        //
-        // role / status ไม่สามารถแก้เองได้
+        // UPDATE SAFE PROFILE FIELDS
         // ------------------------------------------------------
 
         await update(
@@ -532,11 +797,26 @@ export function AuthProvider({ children }) {
 
 
         // ------------------------------------------------------
-        // LOGIN HISTORY
+        // OWNER SYNC
         // ------------------------------------------------------
         //
-        // ถ้าเขียน Login History ไม่ได้
-        // ห้ามทำให้ Login หลักล้มเหลว
+        // เมื่อ Owner Login ใหม่
+        // จะซ่อม invite ของหัวหน้ากะเก่าทั้งหมด
+        // อัตโนมัติ
+        // ------------------------------------------------------
+
+        if (
+          updatedProfile.role ===
+          ROLES.OWNER
+        ) {
+
+          await syncOwnerInvites();
+
+        }
+
+
+        // ------------------------------------------------------
+        // LOGIN HISTORY
         // ------------------------------------------------------
 
         try {
@@ -583,6 +863,7 @@ export function AuthProvider({ children }) {
         setCurrentUser(
           firebaseUser
         );
+
 
         setUserProfile(
           updatedProfile
@@ -728,20 +1009,14 @@ export function AuthProvider({ children }) {
 
 
       localStorage.setItem(
-
         'kon_plus_demo_session',
-
         JSON.stringify(mockUser)
-
       );
 
 
       localStorage.setItem(
-
         'kon_plus_session_date',
-
         getBangkokTodayString()
-
       );
 
 
@@ -779,11 +1054,7 @@ export function AuthProvider({ children }) {
 
         });
 
-      } catch (e) {
-
-        // Demo Login ไม่ควรล้มเหลว
-        // เพราะ Login History
-      }
+      } catch (e) {}
 
 
       setLoading(false);
@@ -814,8 +1085,6 @@ export function AuthProvider({ children }) {
         );
 
       } catch (e) {
-
-        // ignore
 
       } finally {
 
